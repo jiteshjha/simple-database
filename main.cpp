@@ -2,6 +2,10 @@
 #include<cstring>
 #include<cstdlib>
 #include<iostream>
+#include<string>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "generate_token.cpp"
 
 using namespace std;
@@ -17,18 +21,14 @@ void Create_table_field_ext(FILE *);
 /* Data structure [Start] */
 
 class database_session {
-	public static bool is_set;
-
+    public:
+		static bool is_set;
+		static string database_name;
 	
 };
 
-/* class data_structure {
-	
-	public:
-	
-
-}; */
-
+bool database_session::is_set = false;
+string database_session::database_name = "";
 
 /* Data structure [End] */
 
@@ -106,6 +106,7 @@ int is_datatype(char * str) {
 
 	return flag;
 }
+
 /*Helper functions [End] */
 
 
@@ -165,6 +166,22 @@ void Create_database(FILE *fp1) {
 	if(check == 1) {
 		if(is_identifier(token) != 0) {
 			printf("Matched %s\n", token);
+
+			// create database [id]
+
+			// If the database doesn't exist, create a directory
+			// else display an Error
+			// Reference : https://stackoverflow.com/questions/7430248/creating-a-new-directory-in-c
+
+			struct stat st = {0};
+
+			if (stat(token, &st) == -1) {
+				mkdir(token, 0700);
+				printf("Database created\n");
+			} else {
+				printf("Error creating database!\n"); exit(1);
+			}
+
 		}		
 		else {
 			printf("Expected database name(identifier)\n"); exit(0);
@@ -184,6 +201,24 @@ void Use_database(FILE *fp1) {
 	if(check == 1) {
 		if(is_identifier(token) != 0) {
 			printf("Matched %s\n", token);
+
+			// use [id]
+
+			// If the database's folder exists, then use it 
+			// else display an Error
+			// Reference : https://stackoverflow.com/questions/7430248/creating-a-new-directory-in-c
+
+			struct stat st = {0};
+
+			if (stat(token, &st) == -1) {
+				printf("Database doesn't exist!\n"); exit(1);
+			} else {
+				database_session::is_set = true;
+				database_session::database_name = token;
+
+				printf("Using specified database\n"); 
+			}
+
 		}		
 		else {
 			printf("Expected database name(identifier)\n"); exit(0);
