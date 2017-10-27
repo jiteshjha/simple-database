@@ -16,6 +16,18 @@ void Create_table_field_ext(FILE *);
 
 /* Data structure [Start] */
 
+class database_session {
+	public static bool is_set;
+
+	
+};
+
+/* class data_structure {
+	
+	public:
+	
+
+}; */
 
 
 /* Data structure [End] */
