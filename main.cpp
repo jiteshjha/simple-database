@@ -24,11 +24,14 @@ class database_session {
     public:
 		static bool is_set;
 		static string database_name;
-	
 };
 
 bool database_session::is_set = false;
 string database_session::database_name = "";
+
+
+
+
 
 /* Data structure [End] */
 
@@ -116,13 +119,16 @@ void Program(FILE * fp1) {
 	check = next_token(fp1, token);
 	
 	if(check == 1) {
-		if(strcmp(token, "create") == 0) {
+		if(strcmp(token, "use") == 0) {
+			printf("Matched %s\n", token);
+			Use_database(fp1);
+		}
+		else if(strcmp(token, "create") == 0) {
 			printf("Matched %s\n", token);
 			Create(fp1);
 		}
-		else if(strcmp(token, "use") == 0) {
-			printf("Matched %s\n", token);
-			Use_database(fp1);
+		else if(database_session::is_set == false){
+			printf("Select a database to use first!\n");
 		}
 		else {
 			printf("Expected create | select | insert | update | use | delete\n"); exit(0);
@@ -235,7 +241,7 @@ void Create_table(FILE *fp1) {
 	char token[50];
 	check = next_token(fp1, token);
 
-	if(check == 1) {
+	if(check == 1 && database_session::is_set == true) {
 		if(is_identifier(token) != 0) {
 			printf("Matched %s\n", token);
 
@@ -273,6 +279,8 @@ void Create_table(FILE *fp1) {
 			printf("Expected table name(identifier)\n"); exit(0);
 		}
 
+	} else if(database_session::is_set != true) {
+		printf("Choose a database first!\n");
 	} else {
 		printf("Incomplete query\n");
 		exit(EXIT_SUCCESS);
