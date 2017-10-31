@@ -1,11 +1,14 @@
-#include<cstdio>
-#include<cstring>
-#include<cstdlib>
-#include<iostream>
-#include<string>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <iostream>
+#include <string>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <map>
+#include <vector>
+#include <fstream>
 #include "generate_token.cpp"
 
 using namespace std;
@@ -29,6 +32,28 @@ class database_session {
 bool database_session::is_set = false;
 string database_session::database_name = "";
 
+//-------------------------------------------------
+
+class create_table {
+	public:
+		static string table_name;		
+		static map<string,string> fields;
+		static vector<string> order;
+};
+
+
+
+string create_table::table_name = "";
+map<string,string> create_table::fields;
+vector<string> create_table::order;
+
+void create_table_reset() {
+    create_table::table_name = "";
+    create_table::fields.clear();
+	create_table::order.clear();
+}
+
+//---------------------------------------------------
 
 
 
@@ -245,6 +270,8 @@ void Create_table(FILE *fp1) {
 		if(is_identifier(token) != 0) {
 			printf("Matched %s\n", token);
 
+			create_table::table_name = token;
+
 			check = next_token(fp1, token);
 			if(check == 1) {
 				if(strcmp(token, "(") == 0) {
@@ -255,22 +282,69 @@ void Create_table(FILE *fp1) {
 
 					if(check == 1) {
 						if(strcmp(token, ")") == 0) {
-							printf("Matched %s\n", token);							
+							printf("Matched %s\n", token);
+
+							// create table [id] with fields as <id, datatpye>
+
+							// Check if table already exists
+
+							struct stat st = {0};
+
+							string tablename = database_session::database_name + "/" + create_table::table_name;
+
+							const char *cstr = tablename.c_str();
+							
+							if (stat(cstr, &st) == -1) {
+
+								// create the folder and the metadata
+								mkdir(cstr, 0700);
+
+								string metadata = tablename + "/metadata.txt";
+
+								ofstream out(metadata);
+
+								int count = 0;
+
+								for (vector<string>::const_iterator i = create_table::order.begin(); 
+										i != create_table::order.end(); ++i) {
+									
+										string key = *i;
+										string write_string = to_string(count) + "," + key + "," + create_table::fields[key];
+
+										if(count != 0) {
+											write_string = "\n" + write_string;
+										}
+
+										out << write_string;
+
+										count += 1;
+								}
+						
+								out.close();
+								printf("Table created\n");
+							} else {
+								create_table_reset();
+								printf("Error creating table or table already exists!\n"); exit(1);
+							}							
 						}
 						else {
+							create_table_reset();
 							printf("Expected )\n"); exit(0);
 						}
 
 					} else {
+						create_table_reset();
 						printf("Incomplete query\n");
 						exit(EXIT_SUCCESS);
 					}
 				}
 				else {
+					create_table_reset();
 					printf("Expected (\n"); exit(0);
 				}
 
 			} else {
+				create_table_reset();
 				printf("Incomplete query\n");
 				exit(EXIT_SUCCESS);
 			}
@@ -295,30 +369,44 @@ void Create_table_field(FILE *fp1) {
 	if(check == 1) {
 		if(is_identifier(token) != 0) {
 			printf("Matched %s\n", token);
-
+			string field_id = token;
+			create_table::order.push_back(field_id);
 			check = next_token(fp1, token);
 
 			if(check == 1) {
 				if(is_datatype(token) != 0) {
 					printf("Matched %s\n", token);
-					
-					Create_table_field_ext(fp1);
+					string datatype = token;
+
+					// Check for duplicate field_id
+					if(create_table::fields.count(field_id) == 0) {
+						create_table::fields[field_id] = datatype;
+						Create_table_field_ext(fp1);
+					}
+					else {
+						create_table_reset();
+						printf("Duplicate field name\n"); exit(0);
+					}
 				}		
 				else {
+					create_table_reset();
 					printf("Expected data type(int or string)\n"); exit(0);
 				}
 
 			} else {
+				create_table_reset();
 				printf("Incomplete query\n");
 				exit(EXIT_SUCCESS);
 			}
 		}		
 		else {
+			create_table_reset();
 			printf("Expected attribute name(identifier)\n"); exit(0);
 		}
 
 	} else {
-		printf("Incomplete query\n");
+		create_table_reset();
+		printf("Incomplete query\n");		
 		exit(EXIT_SUCCESS);
 	}
 }
@@ -336,30 +424,44 @@ void Create_table_field_ext(FILE *fp1) {
 			if(check == 1) {
 				if(is_identifier(token) != 0) {
 					printf("Matched %s\n", token);
-
+					string field_id = token;
+					create_table::order.push_back(field_id);
 					check = next_token(fp1, token);
 
 					if(check == 1) {
 						if(is_datatype(token) != 0) {
 							printf("Matched %s\n", token);
+							string datatype = token;
 
-							Create_table_field_ext(fp1);
+							// Check for duplicate field_id
+							if(create_table::fields.count(field_id) == 0) {
+								create_table::fields[field_id] = datatype;
+								Create_table_field_ext(fp1);
+							}
+							else {
+								create_table_reset();
+								printf("Duplicate field name\n"); exit(0);
+							}
 							
 						}		
 						else {
+							create_table_reset();
 							printf("Expected data type(int or string)\n"); exit(0);
 						}
 
 					} else {
+						create_table_reset();
 						printf("Incomplete query\n");
 						exit(EXIT_SUCCESS);
 					}
 				}		
 				else {
+					create_table_reset();
 					printf("Expected attribute name(identifier)\n"); exit(0);
 				}
 
 			} else {
+				create_table_reset();
 				printf("Incomplete query\n");
 				exit(EXIT_SUCCESS);
 			}
