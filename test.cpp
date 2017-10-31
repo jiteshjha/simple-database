@@ -3,6 +3,7 @@
 #include<cstdlib>
 #include<iostream>
 #include<string>
+#include <fstream>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -12,26 +13,32 @@
 
 using namespace std;
 
-class create_table {
-	public:
-		static string table_name;		
-		static map<string,string> fields;
-		static vector<string> order;
-};
+int number_lines_file(string filename) {
+	int number_of_lines = 0;
+    string line;
+    ifstream myfile(filename);
 
-
-
-string create_table::table_name = "";
-map<string,string> create_table::fields;
-vector<string> create_table::order;
-
-void create_table_reset() {
-    create_table::table_name = "";
-    create_table::fields.clear();
-	create_table::order.clear();
+    while (getline(myfile, line))
+        ++number_of_lines;
+    
+	return number_of_lines;
 }
 
 int main(int argc, char * argv[]) {
     
-    return 0;
+	struct stat st = {0};
+
+	string tablename = "xyz/sdss";
+
+	const char *cstr = tablename.c_str();
+
+
+	if (stat(cstr, &st) == -1) {
+		cout<<"No";
+	}
+	else {
+		cout<<"Yes";
+	}
+
+	return 0;
 }

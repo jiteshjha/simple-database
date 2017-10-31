@@ -9,6 +9,7 @@
 #include <map>
 #include <vector>
 #include <fstream>
+#include <sstream>
 #include "generate_token.cpp"
 
 using namespace std;
@@ -20,6 +21,9 @@ void Use_database(FILE *);
 void Create_table(FILE *);
 void Create_table_field(FILE *);
 void Create_table_field_ext(FILE *);
+void Insert(FILE *);
+void Insert_field(FILE *);
+void Insert_field_ext(FILE *);
 
 /* Data structure [Start] */
 
@@ -55,8 +59,19 @@ void create_table_reset() {
 
 //---------------------------------------------------
 
+class insert {
+	public:
+		static string table_name;
+		static vector<string> field_values;
+};
 
+string insert::table_name = "";
+vector<string> insert::field_values;
 
+void insert_reset() {
+    insert::table_name = "";
+    insert::field_values.clear();
+}
 
 /* Data structure [End] */
 
@@ -66,6 +81,17 @@ int is_identifier(char * str) {
 
 	if(len < 1) {
 		return 0;
+	}
+
+	string keywords[] = {"int", "string", "use", "database", "create", "table",
+						"insert", "into", "values", "select", "from", "where",
+						"delete"};
+
+	for(int i = 0; i < 13; i++) {
+		string temp = str;
+		if(temp.compare(keywords[i]) == 0) {
+			return 0;
+		}
 	}
 
 	int i = 1;
@@ -84,8 +110,8 @@ int is_identifier(char * str) {
 	return 1;
 }
 
-int is_string(char * str) {
-	int len = strlen(str);
+int is_string(string str) {
+	int len = str.length();
 
 	if(len < 1) {
 		return 0;
@@ -98,9 +124,9 @@ int is_string(char * str) {
 	return 0;
 }
 
-int is_integer(char * str) {
+int is_integer(string str) {
 	
-	int len = strlen(str);
+	int len = str.length();
 
 	if(len < 1) {
 		return 0;
@@ -135,6 +161,30 @@ int is_datatype(char * str) {
 	return flag;
 }
 
+int number_lines_file(string filename) {
+	int number_of_lines = 0;
+    string line;
+    ifstream myfile(filename);
+
+    while (getline(myfile, line))
+        ++number_of_lines;
+    
+	myfile.close();
+	return number_of_lines;
+}
+
+vector<string> string_tokenize_on_comma(string str) {
+	vector<string> strings;
+
+    istringstream f(str);
+    string s;   
+
+    while (getline(f, s, ',')) {
+        strings.push_back(s);
+    }
+	return strings;
+}
+
 /*Helper functions [End] */
 
 
@@ -154,6 +204,10 @@ void Program(FILE * fp1) {
 		}
 		else if(database_session::is_set == false){
 			printf("Select a database to use first!\n");
+		}
+		else if(strcmp(token, "insert") == 0) {
+			printf("Matched %s\n", token);
+			Insert(fp1);
 		}
 		else {
 			printf("Expected create | select | insert | update | use | delete\n"); exit(0);
@@ -470,6 +524,235 @@ void Create_table_field_ext(FILE *fp1) {
 			fseek(fp1, (-1 * strlen(token)), SEEK_CUR);
 		}
 
+	} else {
+		printf("Incomplete query\n");
+		exit(EXIT_SUCCESS);
+	}
+}
+
+void Insert(FILE *fp1) {
+	int check;
+	char token[50];
+	check = next_token(fp1, token);
+
+	if(check == 1) {
+		if(strcmp(token, "into") == 0) {
+			printf("Matched %s\n", token);
+			
+			check = next_token(fp1, token);
+
+			if(is_identifier(token) != 0) {
+				printf("Matched %s\n", token);
+				insert::table_name = token;
+
+				check = next_token(fp1, token);				
+
+				if(strcmp(token, "values") == 0) {
+					printf("Matched %s\n", token);
+					
+					check = next_token(fp1, token);
+
+					if(strcmp(token, "(") == 0) {
+						printf("Matched %s\n", token);
+						
+						Insert_field(fp1);
+
+						check = next_token(fp1, token);
+
+						if(strcmp(token, ")") == 0) {
+							printf("Matched %s\n", token);
+
+							// insert into [id] values (...)
+
+							// If the table's folder exists, then use it 
+							// else display an Error
+							// Reference : https://stackoverflow.com/questions/7430248/creating-a-new-directory-in-c
+
+							struct stat st = {0};
+
+							string tablename = database_session::database_name + "/" + insert::table_name;
+
+							const char *cstr = tablename.c_str();
+
+							if (stat(cstr, &st) == -1) {
+								printf("Table doesn't exist!\n"); exit(1);
+							} else {
+								//So, table exists
+
+								/* first check if number of fields in insert commands
+								   matches the number of fields in the table */
+
+								if(number_lines_file(tablename+"/metadata.txt") == insert::field_values.size()) {
+
+									/* let's check whether the datatypes of values 
+									   are as per the metadata of the table */
+
+									   ifstream infile(tablename+"/metadata.txt");
+									   string line;
+
+									   int i = 0;
+
+									   while (std::getline(infile, line)) {
+											vector<string> tokens = string_tokenize_on_comma(line);
+											
+											string value_str = insert::field_values[i];
+
+											if(is_integer(insert::field_values[i]) != 0 
+											   && tokens[2] != "int") {
+												insert_reset();
+												infile.close();
+												cout<<"Datatype of value " + insert::field_values[i] + 
+												" mismatch; Expected integer\n"; exit(0);												
+											}
+											else if(is_string(insert::field_values[i]) != 0 
+											   && tokens[2] != "string") {
+												insert_reset();
+												infile.close();
+												cout<<"Datatype of value " + insert::field_values[i] + 
+												" mismatch; Expected string\n"; exit(0);												
+											}
+
+											i += 1;
+									   }
+
+									   infile.close();
+
+									   // At this point, datatypes of all values are correct.
+									   // Now, let's write the values as CSV into data.txt.
+
+									   
+									   string datafile = tablename + "/data.txt";
+
+										ofstream out(datafile, ios_base::app);
+
+										string write_line = "";
+
+										if(number_lines_file(datafile) > 0) {
+											write_line = "\n";
+										}
+
+										i = 0;
+
+										for (vector<string>::const_iterator iter = insert::field_values.begin(); 
+												iter != insert::field_values.end(); ++iter) {
+											
+												string key = *iter;
+												
+												if(i != 0) {
+													write_line = write_line + ",";
+												}
+
+												write_line += key;
+
+												i += 1;
+										}
+
+										out << write_line;
+								
+										insert_reset();
+										out.close();
+
+										printf("Insertion complete\n");
+								}
+								else {
+									insert_reset();
+									printf("Incorrect number of values\n"); exit(0);
+								}
+							}
+						}		
+						else {
+							insert_reset();
+							printf("Expected )\n"); exit(0);
+						}						
+					}		
+					else {
+						insert_reset();
+						printf("Expected (\n"); exit(0);
+					}
+				}		
+				else {
+					insert_reset();
+					printf("Expected keyword values\n"); exit(0);
+				}
+			}		
+			else {
+				printf("Expected valid table name\n"); exit(0);
+			}
+		}		
+		else {
+			printf("Expected into\n"); exit(0);
+		}
+
+	} else {
+		printf("Incomplete query\n");
+		exit(EXIT_SUCCESS);
+	}
+}
+
+void Insert_field(FILE *fp1) {
+	int check;
+	char token[50];
+	check = next_token(fp1, token);
+
+	if(check == 1) {
+		if(is_integer(token) != 0) {
+			printf("Matched %s\n", token);
+			insert::field_values.push_back(token);
+			
+			Insert_field_ext(fp1);			
+		}
+		else if(is_string(token) != 0) {
+			printf("Matched %s\n", token);
+			insert::field_values.push_back(token);
+
+			Insert_field_ext(fp1);			
+		}	
+		else {
+			insert_reset();
+			printf("Expected integer value or string value\n"); exit(0);
+		}
+	} else {
+		insert_reset();
+		printf("Incomplete query\n");
+		exit(EXIT_SUCCESS);
+	}
+}
+
+void Insert_field_ext(FILE *fp1) {
+	int check;
+	char token[50];
+	check = next_token(fp1, token);
+
+	if(check == 1) {
+		if(strcmp(token, ",") == 0) {
+			printf("Matched %s\n", token);
+			
+			check = next_token(fp1, token);
+
+			if(check == 1) {
+				if(is_integer(token) != 0) {
+					printf("Matched %s\n", token);
+					insert::field_values.push_back(token);
+
+					Insert_field_ext(fp1);
+				}
+				else if(is_string(token) != 0) {
+					printf("Matched %s\n", token);
+					insert::field_values.push_back(token);
+
+					Insert_field_ext(fp1);
+				}	
+				else {
+					printf("Expected integer value or string value\n"); exit(0);
+				}
+			} else {
+				printf("Incomplete query\n");
+				exit(EXIT_SUCCESS);
+			}
+		}
+		else {
+			fseek(fp1, (-1 * strlen(token)), SEEK_CUR);
+		}
 	} else {
 		printf("Incomplete query\n");
 		exit(EXIT_SUCCESS);
