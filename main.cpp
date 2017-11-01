@@ -15,15 +15,24 @@
 using namespace std;
 
 void Program(FILE *);
+
 void Create(FILE *);
+
 void Create_database(FILE *);
 void Use_database(FILE *);
+
 void Create_table(FILE *);
 void Create_table_field(FILE *);
 void Create_table_field_ext(FILE *);
+
 void Insert(FILE *);
 void Insert_field(FILE *);
 void Insert_field_ext(FILE *);
+
+void Select(FILE *);
+void Select_field(FILE *);
+
+void Delete(FILE *);
 
 /* Data structure [Start] */
 
@@ -72,6 +81,47 @@ void insert_reset() {
     insert::table_name = "";
     insert::field_values.clear();
 }
+
+//----------------------------------------------------
+
+class select {
+	public:
+		static bool require_all_fields;
+		static string table_name;
+		static vector<string> field_names;
+};
+
+
+bool select::require_all_fields = false;
+string select::table_name = "";
+vector<string> select::field_names;
+
+void select_reset() {
+	select::require_all_fields = false;
+    select::table_name = "";
+    select::field_names.clear();
+}
+
+//--------------------------------------------------------
+
+class delete_command {
+	public:
+		static string table_name;
+		static string fieldname;
+		static string fieldvalue;
+};
+
+string delete_command::table_name = "";
+string delete_command::fieldname = "";
+string delete_command::fieldvalue = "";
+
+void delete_reset() {
+	delete_command::table_name = "";
+	delete_command::fieldname = "";
+	delete_command::fieldvalue = "";
+}
+
+
 
 /* Data structure [End] */
 
@@ -208,6 +258,14 @@ void Program(FILE * fp1) {
 		else if(strcmp(token, "insert") == 0) {
 			printf("Matched %s\n", token);
 			Insert(fp1);
+		}
+		else if(strcmp(token, "select") == 0) {
+			printf("Matched %s\n", token);
+			Select(fp1);
+		}
+		else if(strcmp(token, "delete") == 0) {
+			printf("Matched %s\n", token);
+			Delete(fp1);
 		}
 		else {
 			printf("Expected create | select | insert | update | use | delete\n"); exit(0);
@@ -375,6 +433,12 @@ void Create_table(FILE *fp1) {
 								}
 						
 								out.close();
+
+								// Create a blank data.txt
+
+								ofstream outagain(tablename+"/data.txt");
+								outagain.close();
+
 								printf("Table created\n");
 							} else {
 								create_table_reset();
@@ -597,15 +661,14 @@ void Insert(FILE *fp1) {
 											
 											string value_str = insert::field_values[i];
 
-											if(is_integer(insert::field_values[i]) != 0 
-											   && tokens[2] != "int") {
+											if(tokens[2] == "int" && is_integer(insert::field_values[i]) == 0
+											   ) {
 												insert_reset();
 												infile.close();
 												cout<<"Datatype of value " + insert::field_values[i] + 
 												" mismatch; Expected integer\n"; exit(0);												
 											}
-											else if(is_string(insert::field_values[i]) != 0 
-											   && tokens[2] != "string") {
+											else if(tokens[2] == "string" &&is_string(insert::field_values[i]) == 0) {
 												insert_reset();
 												infile.close();
 												cout<<"Datatype of value " + insert::field_values[i] + 
@@ -753,6 +816,427 @@ void Insert_field_ext(FILE *fp1) {
 		else {
 			fseek(fp1, (-1 * strlen(token)), SEEK_CUR);
 		}
+	} else {
+		printf("Incomplete query\n");
+		exit(EXIT_SUCCESS);
+	}
+}
+
+void Select(FILE *fp1) {
+	int check;
+	char token[50];
+	check = next_token(fp1, token);
+
+	if(check == 1) {
+		if(strcmp(token, "*") == 0) {
+			printf("Matched %s\n", token);
+			select::require_all_fields = true;
+		}
+		else if(is_identifier(token) != 0) {
+			printf("Matched %s\n", token);
+			select::require_all_fields = false;
+			select::field_names.push_back(token);
+			Select_field(fp1);
+		}
+		else {
+			select_reset();
+			printf("Expected * or attribute name\n"); exit(0);
+		}
+
+		check = next_token(fp1, token);
+
+		if(check == 1) {
+			if(strcmp(token, "from") == 0) {
+				printf("Matched %s\n", token);
+
+				check = next_token(fp1, token);
+
+				if(check == 1) {
+					if(is_identifier(token) != 0) {
+						printf("Matched %s\n", token);
+
+						select::table_name = token;
+						// select ... from [id];
+
+						// First check whether the table exists or not.
+
+						struct stat st = {0};
+
+						string tablename = database_session::database_name + "/" + select::table_name;
+
+						const char *cstr = tablename.c_str();
+
+						if (stat(cstr, &st) == -1) {
+							printf("Table doesn't exist!\n"); exit(1);
+						} else {
+							// So, Table exists
+
+						
+							// If the table is empty, show the message
+							if(number_lines_file(tablename+"/data.txt") == 0) {
+									printf("Empty table\n");
+							}
+							else {
+								
+								// If * operator is used, print all the data
+								if(select::require_all_fields == true) {
+									ifstream infile(tablename+"/data.txt");
+									string line;								
+
+									while (std::getline(infile, line)) {
+										cout<<line<<"\n";
+									}
+
+									infile.close();
+
+									select_reset();
+									printf(".\n.\n.\nSelect operation complete\n");
+								}
+								else { // print data only from specified fields
+
+									// Load metadata in the form of <fieldname, position>
+									ifstream infile(tablename+"/metadata.txt");
+
+									map<string, int> metadata_pair;
+
+									string line;
+									while (std::getline(infile, line)) {
+										vector<string> tokens = string_tokenize_on_comma(line);
+										
+										string key = tokens[1];
+										string str_value = tokens[0];
+										int value;
+										stringstream(str_value) >> value;
+										metadata_pair[key] = value;
+
+									}
+
+									infile.close();
+
+									
+
+									// At this point, we have the metadata in the required pair
+
+									ifstream datafile(tablename+"/data.txt");
+
+									while (std::getline(datafile, line)) {
+										
+										int i = 0;
+										vector<string> tokens = string_tokenize_on_comma(line);
+
+										for (vector<string>::const_iterator iter = select::field_names.begin(); 
+												iter != select::field_names.end(); ++iter) {											
+											
+												string field = *iter;
+												
+												int position = metadata_pair[field];
+
+												if(i != 0) {
+													printf(",");
+												}
+
+												cout<<tokens[position];
+
+												i += 1;
+										}
+										cout<<"\n";
+									}
+
+									datafile.close();
+									metadata_pair.clear();
+									select_reset();
+									printf(".\n.\n.\nSelect operation complete\n"); 
+								}						
+							}
+						}
+					}
+					else {
+						select_reset();
+						printf("Expected a valid table name\n"); exit(0);
+					}
+				} else {
+					select_reset();
+					printf("Incomplete query\n");
+					exit(EXIT_SUCCESS);
+				}
+			}
+			else {
+				select_reset();
+				printf("Expected keyword from\n"); exit(0);
+			}
+		} else {
+			select_reset();
+			printf("Incomplete query\n");
+			exit(EXIT_SUCCESS);
+		}
+
+	} else {
+		
+		printf("Incomplete query\n");
+		exit(EXIT_SUCCESS);
+	}
+}
+
+void Select_field(FILE *fp1) {
+	int check;
+	char token[50];
+	check = next_token(fp1, token);
+
+	if(check == 1) {
+		if(strcmp(token, ",") == 0) {
+			printf("Matched %s\n", token);
+
+			check = next_token(fp1, token);
+			if(is_identifier(token) != 0) {
+				printf("Matched %s\n", token);
+				select::field_names.push_back(token);
+				Select_field(fp1);				
+			}
+			else {
+				select_reset();
+				printf("Expected attribute name\n"); exit(0);
+			}
+		}
+		else {
+			fseek(fp1, (-1 * strlen(token)), SEEK_CUR);
+		}
+
+	} else {
+		select_reset();
+		printf("Incomplete query\n");
+		exit(EXIT_SUCCESS);
+	}
+}
+
+void Delete(FILE *fp1) {
+	int check;
+	char token[50];
+	check = next_token(fp1, token);
+
+	if(check == 1) {
+		if(strcmp(token, "from") == 0) {
+			printf("Matched %s\n", token);
+			
+			check = next_token(fp1, token);
+
+			if(check == 1) {
+				if(is_identifier(token) != 0) {
+					printf("Matched %s\n", token);
+					
+					delete_command::table_name = token;
+
+					check = next_token(fp1, token);
+
+					if(check == 1) {
+						if(strcmp(token, "where") == 0) {
+							printf("Matched %s\n", token);
+							
+							check = next_token(fp1, token);	
+
+							if(check == 1) {
+								if(is_identifier(token) != 0) {
+									printf("Matched %s\n", token);
+									delete_command::fieldname = token;
+									
+									check = next_token(fp1, token);	
+
+									if(check == 1) {
+										if(strcmp(token, "=") == 0) {
+											printf("Matched %s\n", token);											
+											
+											check = next_token(fp1, token);
+											
+											if(check == 1) {
+												if(is_string(token) != 0 || is_integer(token) != 0) {
+													printf("Matched %s\n", token);
+													delete_command::fieldvalue = token;
+													
+													// delete ... where [id] = [id]
+
+													// First, let's check whether the table exists or not
+
+													struct stat st = {0};
+													string tablename = database_session::database_name + "/" + delete_command::table_name;
+
+													const char *cstr = tablename.c_str();
+													if (stat(cstr, &st) == -1) {
+														delete_reset();
+														printf("Table doesn't exist!\n"); exit(1);
+													} else {
+														// So, the table exists
+
+														// Now, check if the attribute in the query, exists or not
+														// Also, if the attribute exists, load the datatype and check the value against it
+														
+														string line;
+
+														ifstream datafile(tablename+"/metadata.txt");
+
+														bool attribute_exists = false;
+														string attribute_datatype = "";
+														int position;
+
+														while (std::getline(datafile, line)) {
+															vector<string> tokens = string_tokenize_on_comma(line);
+
+															if(tokens[1].compare(delete_command::fieldname) == 0) {
+																attribute_exists = true;
+																attribute_datatype = tokens[2];
+																stringstream(tokens[0]) >> position;
+																break;
+															}
+														}
+
+														datafile.close();
+
+														if(attribute_exists == true) {
+															// So, attribute exists
+															// Now let's check the datatype
+
+															if(attribute_datatype.compare("int") == 0
+															 && is_integer(delete_command::fieldvalue) == 0) {
+																delete_reset();
+																printf("Expected int datatype for attribute!\n"); exit(1);
+															 }
+															 else if(attribute_datatype.compare("string") == 0
+															 && is_string(delete_command::fieldvalue) == 0) {
+																delete_reset();
+																printf("Expected string datatype for attribute!\n"); exit(1);
+															 }
+															 else {
+																// datatype of value checks out, now let's
+																// read the data.txt, and write only those tuples which do not satisfy
+																// the where clause
+
+																ifstream datafile(tablename+"/data.txt");
+																ofstream out(tablename+"/temp.txt");
+
+																int i = 0;
+
+																bool tuples_deleted = false;
+																																
+																while (std::getline(datafile, line)) {
+																	vector<string> tokens = string_tokenize_on_comma(line);
+																	
+																	if(tokens[position].compare(delete_command::fieldvalue) != 0) {
+																		if(i != 0) {
+																			out << "\n";
+																		}
+																		out << line;
+																		i += 1;		
+																	} else {
+																		tuples_deleted = true;
+																	}																															
+																}
+
+																datafile.close();
+																out.close();
+
+																string tempfilename = tablename + "/temp.txt";
+																if(tuples_deleted == false) {
+																	printf("No tuples deleted\n");
+																	
+																	remove(tempfilename.c_str());
+																}else {
+																	printf("Delete operation completed!\n");
+																	string datafilename = tablename + "/data.txt";
+																	remove(datafilename.c_str());
+																	rename(tempfilename.c_str(), datafilename.c_str());
+																}
+
+																delete_reset();															
+															 }
+
+															
+														} else {
+															delete_reset();
+															printf("Attribute doesn't exist!\n"); exit(1);
+														}
+
+
+													}
+
+													delete_reset();
+												}
+												else {
+													delete_reset();
+													printf("Expected attribute value\n"); exit(0);
+												}
+
+											} else {
+												delete_reset();
+												printf("Incomplete query\n");
+												exit(EXIT_SUCCESS);
+											}
+										}
+										else {
+											delete_reset();
+											printf("Expected operator =\n"); exit(0);
+										}
+
+									} else {
+										delete_reset();
+										printf("Incomplete query\n");
+										exit(EXIT_SUCCESS);
+									}									
+								}
+								else {
+									delete_reset();
+									printf("Expected attribute name\n"); exit(0);
+								}
+
+							} else {
+								delete_reset();
+								printf("Incomplete query\n");
+								exit(EXIT_SUCCESS);
+							}
+							
+						}
+						else {
+							delete_reset();
+							printf("Expected keyword where\n"); exit(0);
+						}
+
+					} else {
+						// delete from [id]
+
+						// First check the existence of table
+
+						struct stat st = {0};
+
+						if (stat(token, &st) == -1) {
+							printf("Table doesn't exist!\n"); exit(1);
+						} else {
+
+							// Clear the data.txt
+
+							string tablename = database_session::database_name + "/" + delete_command::table_name;
+							ofstream ofs;
+							ofs.open(tablename+"/data.txt", ofstream::out | ofstream::trunc);
+							ofs.close();
+
+							delete_reset();
+							printf("Table content deleted\n");
+
+						}
+
+					}
+					
+				}
+				else {
+					delete_reset();
+					printf("Expected table name\n"); exit(0);
+				}
+
+			} else {
+				printf("Incomplete query\n");
+				exit(EXIT_SUCCESS);
+			}
+		}
+		else {
+			printf("Expected keyword from\n"); exit(0);
+		}
+
 	} else {
 		printf("Incomplete query\n");
 		exit(EXIT_SUCCESS);

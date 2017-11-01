@@ -57,7 +57,7 @@ int next_token(FILE *fp1, char * temp) {
 			fseek(fp1, -1, SEEK_CUR);
 		}
 		else {
-			if(c == '(' || c == ')' || c == ',') {
+			if(c == '(' || c == ')' || c == ',' || c == '*' || c == '=') {
 				temp[0] = c;
 				temp[1] = '\0';
 			}

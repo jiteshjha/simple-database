@@ -28,7 +28,7 @@ int main(int argc, char * argv[]) {
     
 	struct stat st = {0};
 
-	string tablename = "xyz/sdss";
+	string tablename = "xyz/sds";
 
 	const char *cstr = tablename.c_str();
 
