@@ -1357,8 +1357,137 @@ void Update(FILE *fp1) {
 																			update::wherevalue = token;
 
 																			// update ... where [id] = [id]
-																			
 
+
+																			// first check the existence of table
+
+																			struct stat st = {0};
+
+																			string tablename = database_session::database_name + "/" + update::table_name;
+
+																			if (stat(tablename.c_str(), &st) == -1) {
+																				printf("Table doesn't exist!\n"); exit(1);
+																			} else {
+																				// So, table exists
+
+																				// Check whether table is empty or not
+
+																				if(number_lines_file(tablename+"/data.txt") != 0) {
+																					// Table is not empty,
+
+																					// Now, let's validate whether set and where attribute exists
+
+																					string line;
+
+																					ifstream datafile(tablename+"/metadata.txt");
+
+																					bool set_attribute_exists = false;
+																					bool where_attribute_exists = false;
+																					string set_attribute_datatype = "";
+																					string where_attribute_datatype = "";
+																					int set_position;
+																					int where_position;
+
+																					while (std::getline(datafile, line)) {
+																						vector<string> tokens = string_tokenize_on_comma(line);
+
+																						if(tokens[1].compare(update::setname) == 0) {
+																							set_attribute_exists = true;
+																							set_attribute_datatype = tokens[2];
+																							stringstream(tokens[0]) >> set_position;
+																						} else if(tokens[1].compare(update::wherename) == 0) {
+																							where_attribute_exists = true;
+																							where_attribute_datatype = tokens[2];
+																							stringstream(tokens[0]) >> where_position;
+																						}
+																					}
+
+																					datafile.close();
+
+																					if(set_attribute_exists == true && where_attribute_exists == true) {
+																						// So, attribute exists
+																						// Now let's check the datatype	
+
+																						if(set_attribute_datatype.compare("int") == 0
+																						&& is_integer(update::setvalue) == 0) {
+																							update_reset();
+																							printf("Expected int datatype for set statement value!\n"); exit(1);
+																						}
+																						else if(set_attribute_datatype.compare("string") == 0
+																						&& is_string(update::setvalue) == 0) {
+																							update_reset();
+																							printf("Expected string datatype for set statement value!\n"); exit(1);
+																						}
+																						else if(where_attribute_datatype.compare("int") == 0
+																						&& is_integer(update::wherevalue) == 0) {
+																							update_reset();
+																							printf("Expected int datatype for where statement value!\n"); exit(1);
+																						}
+																						else if(where_attribute_datatype.compare("string") == 0
+																						&& is_string(update::wherevalue) == 0) {
+																							update_reset();
+																							printf("Expected string datatype for where statement value!\n"); exit(1);
+																						}
+																						else {
+																							// datatype of value checks out, now let's
+																							// change the value of the attribute as specified 
+																							// in set statement according to where statement
+
+																							ifstream datafile(tablename+"/data.txt");
+																							ofstream out(tablename+"/temp.txt");
+
+																							int i = 0;
+
+																							bool rows_changed = false;
+																																							
+																							while (std::getline(datafile, line)) {
+																								vector<string> tokens = string_tokenize_on_comma(line);
+
+																								if(i != 0) {
+																									out << "\n";																										
+																								}
+																								if(tokens[where_position].compare(update::wherevalue) == 0) {																									
+																									tokens[set_position] = update::setvalue;																																					
+																								
+																									out << string_join_on_comma(tokens);
+																									rows_changed = true;
+																									
+																								} else {
+																									out << line;
+																								}
+																								i = 1;																							
+																							}
+
+																							datafile.close();
+																							out.close();
+
+																							string datafilename = tablename + "/data.txt";
+																							string tempfilename = tablename + "/temp.txt";
+																							remove(datafilename.c_str());
+																							rename(tempfilename.c_str(), datafilename.c_str());
+
+																							update_reset();
+
+																							if(rows_changed == true)
+																								printf("Update completed\n");
+																							else
+																								printf("No rows updated");
+																						}
+
+																					} else if(set_attribute_exists == false) {
+																						update_reset();
+																						printf("Attribute in set statement doesn't exist\n"); exit(0);
+																					} else {
+																						update_reset();
+																						printf("Attribute in where statement doesn't exist\n"); exit(0);
+																					}				
+
+																				}
+																				else {
+																					update_reset();
+																					printf("Table is empty\n"); exit(0);
+																				}
+																			}																	
 																		}		
 																		else {
 																			update_reset();
@@ -1448,12 +1577,12 @@ void Update(FILE *fp1) {
 
 															if(attribute_datatype.compare("int") == 0
 															 && is_integer(update::setvalue) == 0) {
-																delete_reset();
+																update_reset();
 																printf("Expected int datatype for set value!\n"); exit(1);
 															 }
 															 else if(attribute_datatype.compare("string") == 0
 															 && is_string(update::setvalue) == 0) {
-																delete_reset();
+																update_reset();
 																printf("Expected string datatype for set value!\n"); exit(1);
 															 }
 															 else {
