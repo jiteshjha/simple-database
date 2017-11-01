@@ -13,32 +13,34 @@
 
 using namespace std;
 
-int number_lines_file(string filename) {
-	int number_of_lines = 0;
-    string line;
-    ifstream myfile(filename);
+string string_join_on_comma(vector<string> vec_str) {
+	string str = "";
 
-    while (getline(myfile, line))
-        ++number_of_lines;
-    
-	return number_of_lines;
+	int i = 0;
+
+	for (vector<string>::const_iterator iter = vec_str.begin(); 
+		iter != vec_str.end(); ++iter) {
+
+			if(i != 0) {
+				str += ",";
+			}
+
+			str += *iter;
+			i += 1;
+		}	
+
+
+		return str;
 }
 
 int main(int argc, char * argv[]) {
     
-	struct stat st = {0};
+	vector<string> str;
 
-	string tablename = "xyz/sds";
+	str.push_back("hey");
+	str.push_back("sds");
+	str.push_back("sdsdsd");
 
-	const char *cstr = tablename.c_str();
-
-
-	if (stat(cstr, &st) == -1) {
-		cout<<"No";
-	}
-	else {
-		cout<<"Yes";
-	}
-
+	cout<<string_join_on_comma(str);
 	return 0;
 }

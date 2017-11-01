@@ -34,6 +34,8 @@ void Select_field(FILE *);
 
 void Delete(FILE *);
 
+void Update(FILE *);
+
 /* Data structure [Start] */
 
 class database_session {
@@ -119,6 +121,31 @@ void delete_reset() {
 	delete_command::table_name = "";
 	delete_command::fieldname = "";
 	delete_command::fieldvalue = "";
+}
+
+//----------------------------------------------------------
+
+class update {
+	public:
+		static string table_name;
+		static string setname;
+		static string setvalue;
+		static string wherename;
+		static string wherevalue;
+};
+
+string update::table_name = "";
+string update::setname = "";
+string update::setvalue = "";
+string update::wherename = "";
+string update::wherevalue = "";
+
+void update_reset() {
+	update::table_name = "";
+	update::setname = "";
+	update::setvalue = "";
+	update::wherename = "";
+	update::wherevalue = "";
 }
 
 
@@ -235,6 +262,26 @@ vector<string> string_tokenize_on_comma(string str) {
 	return strings;
 }
 
+string string_join_on_comma(vector<string> vec_str) {
+	string str = "";
+
+	int i = 0;
+
+	for (vector<string>::const_iterator iter = vec_str.begin(); 
+		iter != vec_str.end(); ++iter) {
+
+			if(i != 0) {
+				str += ",";
+			}
+
+			str += *iter;
+			i += 1;
+		}	
+
+
+		return str;
+}
+
 /*Helper functions [End] */
 
 
@@ -266,6 +313,10 @@ void Program(FILE * fp1) {
 		else if(strcmp(token, "delete") == 0) {
 			printf("Matched %s\n", token);
 			Delete(fp1);
+		}
+		else if(strcmp(token, "update") == 0) {
+			printf("Matched %s\n", token);
+			Update(fp1);
 		}
 		else {
 			printf("Expected create | select | insert | update | use | delete\n"); exit(0);
@@ -1243,7 +1294,271 @@ void Delete(FILE *fp1) {
 	}
 }
 
+void Update(FILE *fp1) {
+	int check;
+	char token[50];
+	check = next_token(fp1, token);
 
+	if(check == 1) {
+		if(is_identifier(token) != 0) {
+			printf("Matched %s\n", token);
+			update::table_name = token;
+
+			check = next_token(fp1, token);
+			
+			if(check == 1) {
+				if(strcmp(token, "set") == 0) {
+					printf("Matched %s\n", token);
+					
+					check = next_token(fp1, token);
+
+					if(check == 1) {
+						if(is_identifier(token) != 0) {
+							printf("Matched %s\n", token);
+							update::setname = token;
+
+							check = next_token(fp1, token);
+
+							if(check == 1) {
+								if(strcmp(token, "=") == 0) {
+									printf("Matched %s\n", token);									
+									
+									check = next_token(fp1, token);									
+									
+									if(check == 1) {
+										if(is_string(token) != 0 || is_integer(token) != 0) {
+											printf("Matched %s\n", token);
+											update::setvalue = token;
+											
+											check = next_token(fp1, token);									
+											
+											if(check == 1) {
+												if(strcmp(token, "where") == 0) {
+													printf("Matched %s\n", token);
+													
+													check = next_token(fp1, token);									
+													
+													if(check == 1) {
+														if(is_identifier(token) != 0) {
+															printf("Matched %s\n", token);
+															update::wherename = token;
+
+															check = next_token(fp1, token);
+
+															if(check == 1) {
+																if(strcmp(token, "=") == 0) {
+																	printf("Matched %s\n", token);
+
+																	check = next_token(fp1, token);
+
+																	if(check == 1) {
+																		if(is_string(token) != 0 || is_integer(token) != 0) {
+																			printf("Matched %s\n", token);
+																			update::wherevalue = token;
+
+																			// update ... where [id] = [id]
+																			
+
+																		}		
+																		else {
+																			update_reset();
+																			printf("Expected where condition value\n"); exit(0);
+																		}
+
+																	} else {
+																		update_reset();
+																		printf("Incomplete query\n");
+																		exit(EXIT_SUCCESS);
+																	}
+
+																	
+																}		
+																else {
+																	update_reset();
+																	printf("Expected operator =\n"); exit(0);
+																}
+
+															} else {
+																update_reset();
+																printf("Incomplete query\n");
+																exit(EXIT_SUCCESS);
+															}
+														}		
+														else {
+															update_reset();
+															printf("Expected where condition attribute\n"); exit(0);
+														}
+
+													} else {
+														update_reset();
+														printf("Incomplete query\n");
+														exit(EXIT_SUCCESS);
+													}													
+												}	
+												else {
+													update_reset();
+													printf("Expected keyword where\n"); exit(0);
+												}
+
+											} else {
+												// update [id] set [id] = [id]
+
+												// first check the existence of table
+
+												struct stat st = {0};
+
+												string tablename = database_session::database_name + "/" + update::table_name;
+
+												if (stat(tablename.c_str(), &st) == -1) {
+													printf("Table doesn't exist!\n"); exit(1);
+												} else {
+													// So, table exists
+
+													// Check whether table is empty or not
+
+													if(number_lines_file(tablename+"/data.txt") != 0) {
+														// Table is not empty,
+
+														// Now, let's validate whether attribute exists
+
+														string line;
+
+														ifstream datafile(tablename+"/metadata.txt");
+
+														bool attribute_exists = false;
+														string attribute_datatype = "";
+														int position;
+
+														while (std::getline(datafile, line)) {
+															vector<string> tokens = string_tokenize_on_comma(line);
+
+															if(tokens[1].compare(update::setname) == 0) {
+																attribute_exists = true;
+																attribute_datatype = tokens[2];
+																stringstream(tokens[0]) >> position;
+																break;
+															}
+														}
+
+														datafile.close();
+
+														if(attribute_exists == true) {
+															// So, attribute exists
+															// Now let's check the datatype
+
+															if(attribute_datatype.compare("int") == 0
+															 && is_integer(update::setvalue) == 0) {
+																delete_reset();
+																printf("Expected int datatype for set value!\n"); exit(1);
+															 }
+															 else if(attribute_datatype.compare("string") == 0
+															 && is_string(update::setvalue) == 0) {
+																delete_reset();
+																printf("Expected string datatype for set value!\n"); exit(1);
+															 }
+															 else {
+																// datatype of value checks out, now let's
+																// change the value of the attribute as specified 
+																// in set
+
+																ifstream datafile(tablename+"/data.txt");
+																ofstream out(tablename+"/temp.txt");
+
+																int i = 0;
+																																
+																while (std::getline(datafile, line)) {
+																	vector<string> tokens = string_tokenize_on_comma(line);
+
+																	tokens[position] = update::setvalue;
+
+																	if(i != 0) {
+																		out << "\n";
+																		
+																	}																	
+																
+																	out << string_join_on_comma(tokens);
+																	i = 1;
+																}
+
+																datafile.close();
+																out.close();
+
+																string datafilename = tablename + "/data.txt";
+																string tempfilename = tablename + "/temp.txt";
+																remove(datafilename.c_str());
+																rename(tempfilename.c_str(), datafilename.c_str());
+
+																update_reset();
+																printf("Update completed\n");
+															 }
+
+														} else {
+															update_reset();
+															printf("Set attribute doesn't exists!\n"); exit(1);
+														}
+													}
+													else {
+														update_reset();
+														printf("Table is empty!\n"); exit(1);
+													}
+												}
+											}
+										}	
+										else {
+											update_reset();
+											printf("Expected set value\n"); exit(0);
+										}
+
+									} else {
+										update_reset();
+										printf("Incomplete query\n");
+										exit(EXIT_SUCCESS);
+									}
+								}	
+								else {
+									update_reset();
+									printf("Expected operator =\n"); exit(0);
+								}
+
+							} else {
+								update_reset();
+								printf("Incomplete query\n");
+								exit(EXIT_SUCCESS);
+							}
+							
+						}	
+						else {
+							update_reset();
+							printf("Expected set attribute\n"); exit(0);
+						}
+
+					} else {
+						update_reset();
+						printf("Incomplete query\n");
+						exit(EXIT_SUCCESS);
+					}
+				}	
+				else {
+					update_reset();
+					printf("Expected keyword set\n"); exit(0);
+				}
+
+			} else {
+				update_reset();
+				printf("Incomplete query\n");
+				exit(EXIT_SUCCESS);
+			}
+		}	
+		else {
+			update_reset();
+			printf("Expected table name\n"); exit(0);
+		}
+
+	} else {
+		printf("Incomplete query\n");
+		exit(EXIT_SUCCESS);
+	}
+}
 
 int main(int argc, char * argv[]) {
 	char token[50];
